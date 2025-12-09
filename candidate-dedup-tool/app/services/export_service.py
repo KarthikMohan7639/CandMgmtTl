@@ -101,6 +101,11 @@ def export_duplicate_records(
 
     try:
         LOGGER.info('Exporting %d duplicate groups to %s', len(duplicate_groups), output_filepath)
+        try:
+            import openpyxl
+        except Exception:
+            raise ImportError("openpyxl is required for exporting to Excel. Install with `pip install openpyxl`.")
+
         if progress_callback:
             progress_callback(0.0, "Starting export of duplicate records")
 
@@ -144,15 +149,19 @@ def export_duplicate_records(
 
         with pd.ExcelWriter(output_filepath, engine='openpyxl') as writer:
             out_df.to_excel(writer, sheet_name=sheet_name, index=False)
-            workbook = writer.book
             worksheet = writer.sheets[sheet_name]
+
+            # local imports
+            from openpyxl.styles import Font, PatternFill
 
             # Format header
             header_font = Font(bold=True)
             header_fill = PatternFill(start_color='FFF2F2F2', end_color='FFF2F2F2', fill_type='solid')
-            for cell in list(worksheet.rows)[0]:
-                cell.font = header_font
-                cell.fill = header_fill
+            header_row = list(worksheet.iter_rows(min_row=1, max_row=1))
+            if header_row:
+                for cell in header_row[0]:
+                    cell.font = header_font
+                    cell.fill = header_fill
 
             # Apply alternating fills per group to visually separate groups
             fills = [PatternFill(start_color='FFFFFFFF', end_color='FFFFFFFF', fill_type='solid'),
@@ -179,7 +188,7 @@ def export_duplicate_records(
             progress_callback(1.0, f"Exported duplicate records to {output_filepath}")
         else:
             print(f"Exported duplicate records to {output_filepath}")
-        return None
+        return True
     except Exception as ex:
         LOGGER.exception('Export failed for duplicate records: %s', ex)
         if progress_callback:
