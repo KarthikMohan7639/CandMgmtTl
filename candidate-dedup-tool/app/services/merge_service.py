@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Tuple
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 LOGGER = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ def merge_duplicate_group(records: List[Dict], merge_decisions: Dict[str, Dict])
             merged[field] = non_empty[0] if non_empty else None
 
     # Metadata
-    merged['merge_id'] = f"MERGE-{int(datetime.utcnow().timestamp())}"
+    merged['merge_id'] = f"MERGE-{int(datetime.now(timezone.utc).timestamp())}"
     merged['source_records'] = [r.get('id') or r.get('_index') or None for r in records]
     if conflicts:
         merged['merge_conflicts'] = conflicts
