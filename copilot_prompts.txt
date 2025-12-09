@@ -1,0 +1,78 @@
+# ============================================================================
+# GITHUB COPILOT AGENT - CODE GENERATION PROMPTS
+# ============================================================================
+# Use these prompts to ask GitHub Copilot to generate code for the 
+# Candidate Data Management & Deduplication Tool
+# ============================================================================
+
+## PROMPT 1: Project Structure Setup
+---
+
+**Prompt Title:** Create Project Directory Structure
+
+**Prompt Text:**
+
+Create a Python project structure for a candidate deduplication tool. 
+The project should follow this layout:
+
+```
+candidate-dedup-tool/
+├── README.md
+├── requirements.txt
+├── setup.py
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   ├── main_window.py
+│   │   ├── widgets/
+│   │   │   ├── __init__.py
+│   │   │   ├── data_table.py
+│   │   │   ├── duplicate_view.py
+│   │   │   └── merge_dialog.py
+│   │   └── dialogs/
+│   │       ├── __init__.py
+│   │       ├── file_load_dialog.py
+│   │       ├── mapping_dialog.py
+│   │       └── export_dialog.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── excel_loader.py
+│   │   ├── header_detector.py
+│   │   ├── normalizer.py
+│   │   ├── duplicate_detector.py
+│   │   ├── merge_service.py
+│   │   ├── export_service.py
+│   │   └── mapping_storage.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── candidate_record.py
+│   │   ├── duplicate_group.py
+│   │   └── merge_decision.py
+│   └── utils/
+│       ├── __init__.py
+│       ├── constants.py
+│       └── validators.py
+├── tests/
+│   ├── __init__.py
+│   ├── test_normalizer.py
+│   ├── test_duplicate_detector.py
+│   └── test_merge_service.py
+└── config/
+    └── app_settings.json
+```
+
+Create all __init__.py files with appropriate imports.
+
+---
+
+## PROMPT 2: Data Models
+---
+
+**Prompt Title:** Create Candidate Record Data Model
+
+**Prompt Text:**
+
+Create a `candidate_record.py` file in `app/models/` that defines a 
+`CandidateRecord` da

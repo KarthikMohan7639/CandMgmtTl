@@ -1,0 +1,573 @@
+# ============================================================================
+# CANDIDATE DATA MANAGEMENT & DEDUPLICATION TOOL - REQUIREMENTS DOCUMENT
+# ============================================================================
+# Purpose: Standalone Python desktop tool for detecting and merging duplicate 
+#          candidate records across multiple Excel files from various departments
+# Target User: Recruitment/HR staff (non-technical)
+# Platform: Windows/Mac/Linux
+# Language: Python 3.10+
+# ============================================================================
+
+## PROJECT OVERVIEW
+# This tool consolidates candidate data from multiple Excel files (Piping Design,
+# Quality Project Manager, Electrical Engineering, etc.) with varying column headers
+# and data formats. It identifies duplicates by phone/email, allows interactive
+# merging (iOS-style), and exports clean datasets.
+
+---
+
+## FUNCTIONAL REQUIREMENTS
+
+### 1. FILE LOADING & IMPORT
+FR-1.1: User shall load one or more Excel files (.xlsx, .xls)
+  - Single file selection dialog
+  - Multiple file selection (Ctrl+Click)
+  - Folder selection (recursive, finds all Excel files)
+  
+FR-1.2: App shall parse and read all sheets from selected Excel files
+  - Default: read first sheet of each file
+  - Option to select specific sheets
+  - Combine all sheets into single in-memory dataset
+
+FR-1.3: Loaded data shall be displayed in main table with:
+  - All columns from source files
+  - Row count and file source indicators
+  - Basic search/filter across all columns
+
+---
+
+### 2. HEADER MAPPING & COLUMN DETECTION
+FR-2.1: App shall auto-detect logical field types from column headers
+  - Fuzzy string matching to identify:
+    * Name fields: "Name", "Candidate Name", "Full Name", "Applicant Name", "First Name", "Last Name"
+    * Phone fields: "Phone", "Contact", "Contact No", "Mobile", "Mobile No", "Phone No", "Contact Number"
+    * Email fields: "Email", "Email ID", "Email Address", "E-Mail"
+    * Role fields: "Designation", "Current Role", "Position", "Role Applied", "Job Title", "Applied Position"
+    * Department fields: "Department", "Dept", "Domain", "Function"
+    * Date fields: "Date", "Contact Date", "Application Date", "Updated Date", "Last Contact", "Contacted Date"
+    * Other fields: capture all remaining columns as-is
+
+FR-2.2: User shall be able to manually override auto-detected mappings
+  - Mapping dialog showing all source columns and auto-detected types
+  - Dropdown to reassign columns to logical fields
+  - Preview first 3 rows with mapped values
+  - "Mark as ignore" for irrelevant columns
+
+FR-2.3: Mapping configurations shall be saved and reused
+  - Auto-save mapping for each unique file pattern (e.g., "Piping-*.xlsx")
+  - Load saved mapping when opening similar file (user confirmation)
+  - Ability to create named mapping profiles (e.g., "ONG Standard", "GMO Standard")
+  - Export/import mapping configs as JSON for team sharing
+
+FR-2.4: Special handling for files with varying headers
+  - Example: "Piping-Desinger-ONG.xlsx" might have "Candidate Name" vs "Name"
+  - Example: "Quality-Project-Manager_GMO_QAN-OR-QAG.xlsx" might use "Contact" vs "Phone"
+  - Example: "Elec-Eng-ONG.xlsx" might use "Email ID" vs "Email Address"
+  - App shall suggest best matches and allow manual correction
+
+---
+
+### 3. DATA NORMALIZATION & STANDARDIZATION
+FR-3.1: Phone number normalization
+  - Remove all whitespace (spaces, tabs, newlines)
+  - Remove formatting chars: dashes (-), parentheses (), dots (.), slashes (/)
+  - Remove country code prefixes (+91, 0091, 001, etc.) or standardize them
+  - Handle leading zeros intelligently (e.g., 0-prefix country-specific)
+  - Trim to 10 digits (India standard) for comparison, OR preserve full with consistent format
+  - Treat empty/null values separately (never match empty to empty)
+
+FR-3.2: Email normalization
+  - Convert to lowercase
+  - Trim leading/trailing whitespace
+  - Remove common errors (double spaces, extra dots)
+  - Treat empty/null values separately
+  - Optional: validate email format (basic check for @ and .)
+
+FR-3.3: Name normalization (optional, for display clarity)
+  - Trim whitespace
+  - Standardize casing (Title Case or lowercase)
+  - Preserve original in dataset, use normalized for display
+
+FR-3.4: Other fields
+  - Trim all text fields of leading/trailing whitespace
+  - Preserve nulls/empty strings (don't convert to "N/A" or "None")
+
+---
+
+### 4. DUPLICATE DETECTION
+FR-4.1: Identify duplicates by phone and/or email
+  - Primary key 1: Normalized phone number
+  - Primary key 2: Normalized email
+  - Records are duplicates if they share phone OR email (or both)
+  - Exception: If phone is empty, match only by email; if email is empty, match only by phone
+  - Never match two completely empty records
+
+FR-4.2: Group duplicates
+  - All records with the same phone form one group
+  - All records with the same email form one group
+  - If record A matches B by phone and B matches C by email, A, B, C form one group (transitive closure)
+
+FR-4.3: Classify all records into two categories:
+  - "Unique Records": Records with no phone/email match to any other record
+  - "Duplicate Groups": Sets of 2+ records sharing phone or email
+
+FR-4.4: Display duplicate detection results
+  - Summary: "X unique records, Y duplicate groups (Z total records in groups)"
+  - List of all duplicate groups:
+    * Group ID (e.g., "DUP-001")
+    * Key (matching phone or email or both)
+    * Count of records in group
+    * Candidates' names in group (comma-separated)
+  - Clickable groups to expand and view all records
+
+FR-4.5: Show duplicate group details
+  - Table showing all rows in the selected group
+  - Highlight conflicting values (different values in same field across rows)
+  - Highlight matching values (same value in same field across rows)
+
+---
+
+### 5. MERGE DUPLICATES (iOS-STYLE INTERFACE)
+FR-5.1: Interactive merge dialog for each duplicate group
+  - Show all fields for all records in the group
+  - For each field, show all distinct values found
+  - User selects which row's value to keep (or custom value)
+  - Visual indication of conflicts (fields with >1 distinct value)
+
+FR-5.2: Merge strategies
+  - Per-field strategy selection:
+    * "Use Value from Row N": Pick a specific row
+    * "Keep Most Recent": Use value from row with latest date (if date field exists)
+    * "Keep Non-Empty": Use first non-empty value (in row order)
+    * "Concatenate": Combine all non-empty values with separator
+    * "Custom": User types custom value
+  
+FR-5.3: Auto-merge option
+  - User can choose "Auto-Merge All" for all duplicate groups
+  - Apply default rules:
+    * For date-related fields: use most recent (by date column if available)
+    * For phone/email: keep value (should be same in group by definition)
+    * For other fields: use first non-empty value
+    * For name: prompt user OR use first row's name
+  - Show preview before confirming auto-merge
+
+FR-5.4: Merge result
+  - After user confirms merge decision for a group:
+    * Create one consolidated record with merged field values
+    * Assign unique merge ID (e.g., "MERGED-0001")
+    * Mark all original rows in group with merge ID and status "merged"
+    * Remove original duplicate rows from the "unique" dataset
+
+FR-5.5: Merge tracking
+  - Store merge history (which rows were merged, merge date, merge strategy)
+  - Allow user to "Undo Last Merge" or view merge log
+
+---
+
+### 6. DATA EXPORT
+FR-6.1: Export "Unique/Merged" dataset
+  - Contains: All original unique records + all merged consolidated records
+  - User chooses output filename (default: "Candidates_Unique_YYYY-MM-DD.xlsx")
+  - Preserve column structure (all original columns included)
+  - No additional merge metadata columns (unless user requests)
+
+FR-6.2: Export "Duplicates" dataset
+  - Contains: All records that were identified as duplicates (before merging)
+  - Group them by duplicate group ID for easy review
+  - Include a "Merge Group ID" column showing which records belong to same group
+  - Include reference to merged record ID (if that record was created)
+  - User chooses output filename (default: "Candidates_Duplicates_YYYY-MM-DD.xlsx")
+
+FR-6.3: Export options
+  - Choose sheet names
+  - Option to include/exclude metadata columns (file origin, load date, etc.)
+  - Preserve formatting (fonts, colors, borders) from original if possible
+  - Verify all data is present before export
+
+FR-6.4: Prevent data loss
+  - Never overwrite original Excel files
+  - Confirmation dialog before exporting
+  - Show record count and file path before final export
+
+---
+
+### 7. USER INTERFACE & WORKFLOW
+FR-7.1: Main window layout
+  - Top menu bar: File, View, Tools, Help
+  - Top toolbar with buttons: [Load Files] [Map Headers] [Find Duplicates] [Merge] [Export Unique] [Export Duplicates] [Settings]
+  - Main content area: Tabbed interface
+    * Tab 1: "Loaded Data" - table of all loaded records
+    * Tab 2: "Duplicates View" - list of duplicate groups
+    * Tab 3: "Merge Review" - review merge decisions before export
+  - Status bar: Show current counts, progress indicators
+
+FR-7.2: "Load Files" workflow
+  1. User clicks [Load Files] button
+  2. File dialog opens (single/multiple/folder selection)
+  3. For each selected file:
+     a. Show header detection dialog
+     b. Detect headers, show mapping suggestions
+     c. User approves or corrects mapping
+  4. Load data into memory
+  5. Show summary: "Loaded X files, Y total records"
+
+FR-7.3: "Map Headers" workflow
+  1. User can revisit mapping at any time via [Map Headers] button
+  2. For each loaded file, show columns and detected field types
+  3. User can reassign or ignore columns
+  4. Save mapping for future use
+
+FR-7.4: "Find Duplicates" workflow
+  1. User clicks [Find Duplicates]
+  2. App runs duplicate detection (with progress bar for large datasets)
+  3. Switch to "Duplicates View" tab
+  4. Show summary and list of groups
+  5. User can click each group to expand
+
+FR-7.5: "Merge" workflow
+  1. From Duplicates View, user clicks [Merge] on a group
+  2. Merge dialog opens for that group
+  3. User selects merge strategy per field
+  4. Preview merged result
+  5. Confirm merge (group removed from duplicates, consolidated record created)
+  6. Option to bulk "Auto-Merge All Remaining"
+
+FR-7.6: "Export" workflow
+  1. User clicks [Export Unique] or [Export Duplicates]
+  2. Choose save location and filename
+  3. Confirm counts and columns to export
+  4. Export to Excel
+  5. Show completion message with file path
+
+FR-7.7: Progress indicators
+  - Show progress bar during:
+    * Loading multiple Excel files
+    * Detecting duplicates in large datasets (>10k records)
+    * Exporting data
+  - Allow cancellation of long operations
+
+---
+
+### 8. ERROR HANDLING & VALIDATION
+FR-8.1: Input validation
+  - Check Excel file format validity before loading
+  - Handle missing columns gracefully (log warning, mark as unmapped)
+  - Handle empty files (show warning, skip loading)
+
+FR-8.2: Data validation
+  - Detect invalid phone formats (too short/long)
+  - Detect invalid email formats (warn user)
+  - Handle null/empty fields (do not include in duplicate matching)
+
+FR-8.3: User feedback
+  - Clear error messages with actionable suggestions
+  - Warnings for suspicious data (e.g., "Phone number has only 5 digits")
+  - Confirmation dialogs before destructive actions (merge, export)
+
+FR-8.4: Logging
+  - Log all operations to file (app.log)
+  - Include timestamps and operation details
+  - User can view recent log from Help menu
+
+---
+
+## NON-FUNCTIONAL REQUIREMENTS
+
+NR-1: Performance
+  - Load up to 50 Excel files with 10k records total in <30 seconds
+  - Duplicate detection for 100k records in <5 seconds
+  - UI remains responsive during background operations (use threading)
+  - Memory usage: <500MB for 100k records
+
+NR-2: Code Structure
+  - Modular architecture: separate UI, services, models, utilities
+  - Type hints throughout (`typing` module)
+  - Docstrings for all public methods
+  - Unit tests for normalization, duplicate detection, merge logic
+  - No business logic in GUI code
+
+NR-3: Portability
+  - Standalone executable for Windows (.exe via PyInstaller)
+  - Deployable on Mac and Linux
+  - No system dependencies beyond Python 3.10+
+
+NR-4: Data Integrity
+  - All operations reversible until final export
+  - Original Excel files never modified
+  - Audit trail for merge decisions
+
+NR-5: User Experience
+  - Clear, intuitive UI (inspired by modern desktop apps)
+  - Helpful tooltips and inline documentation
+  - Keyboard shortcuts for common actions (Ctrl+O open, Ctrl+S save, etc.)
+  - Dark mode support (optional)
+
+---
+
+## PROJECT STRUCTURE
+
+```
+candidate-dedup-tool/
+├── README.md
+├── requirements.txt
+├── setup.py / pyproject.toml
+├── app/
+│   ├── __init__.py
+│   ├── main.py                          # Entry point
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   ├── main_window.py               # Main window controller
+│   │   ├── widgets/
+│   │   │   ├── __init__.py
+│   │   │   ├── data_table.py            # Reusable table widget
+│   │   │   ├── duplicate_view.py        # Duplicate group list/detail view
+│   │   │   └── merge_dialog.py          # Merge conflict resolution dialog
+│   │   └── dialogs/
+│   │       ├── __init__.py
+│   │       ├── file_load_dialog.py      # File selection + preview
+│   │       ├── mapping_dialog.py        # Header mapping UI
+│   │       ├── export_dialog.py         # Export settings dialog
+│   │       └── about_dialog.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── excel_loader.py              # Load Excel files, handle sheets
+│   │   ├── header_detector.py           # Fuzzy matching for headers
+│   │   ├── normalizer.py                # Phone/email normalization
+│   │   ├── duplicate_detector.py        # Duplicate grouping logic
+│   │   ├── merge_service.py             # Merge conflict resolution
+│   │   ├── export_service.py            # Export to Excel
+│   │   ├── mapping_storage.py           # Save/load header mappings
+│   │   └── logger.py                    # Logging utility
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── candidate_record.py          # Data model for candidate
+│   │   ├── duplicate_group.py           # Data model for duplicate group
+│   │   ├── merge_decision.py            # Data model for merge rules
+│   │   └── mapping_config.py            # Data model for header mapping
+│   └── utils/
+│       ├── __init__.py
+│       ├── constants.py                 # App constants, magic strings
+│       ├── validators.py                # Input validation utilities
+│       └── helpers.py                   # Misc helper functions
+├── tests/
+│   ├── __init__.py
+│   ├── test_normalizer.py               # Unit tests for normalization
+│   ├── test_duplicate_detector.py       # Unit tests for duplicate logic
+│   ├── test_merge_service.py            # Unit tests for merging
+│   ├── test_export_service.py           # Unit tests for export
+│   └── fixtures/
+│       ├── sample_candidates.xlsx       # Test data
+│       └── sample_mapping_config.json
+├── config/
+│   ├── app_settings.json                # Default app settings
+│   └── header_mappings/                 # Saved mapping configs
+│       ├── piping_designer_mapping.json
+│       ├── quality_manager_mapping.json
+│       └── electrical_engineer_mapping.json
+└── resources/
+    ├── icons/                           # App icons
+    ├── styles/                          # CSS/stylesheet files (if using PyQt)
+    └── docs/                            # User documentation
+```
+
+---
+
+## KEY DEPENDENCIES
+
+```
+pandas>=2.0.0                    # Data manipulation, Excel I/O
+openpyxl>=3.10.0               # Excel file handling (backend for pandas)
+xlrd>=2.0.0                     # Read older .xls files
+PyQt5>=5.15.0 OR PySide6>=6.2  # Desktop GUI framework
+python-Levenshtein>=0.21.0      # Fuzzy string matching
+difflib (builtin)               # String similarity
+fuzzywuzzy>=0.18.0              # Fuzzy string matching library
+PyInstaller>=6.0.0              # Packaging as standalone executable
+```
+
+---
+
+## EXAMPLE HEADER MAPPING SCENARIOS
+
+### Scenario 1: Piping-Desinger-ONG.xlsx
+```
+Source Columns Detected:
+  - "Candidate Name" → Auto-map to: NAME ✓
+  - "Contact No" → Auto-map to: PHONE ✓
+  - "Email Address" → Auto-map to: EMAIL ✓
+  - "Current Designation" → Auto-map to: DESIGNATION ✓
+  - "Applied Date" → Auto-map to: DATE (candidate applied)
+  - [Other columns kept as-is]
+```
+
+### Scenario 2: Quality-Project-Manager_GMO_QAN-OR-QAG.xlsx
+```
+Source Columns Detected:
+  - "Name" → Auto-map to: NAME ✓
+  - "Mobile" → Auto-map to: PHONE ✓ (user confirms)
+  - "Email ID" → Auto-map to: EMAIL ✓
+  - "Role Applied" → Auto-map to: DESIGNATION ✓
+  - "Department" → Keep as DEPARTMENT
+  - "Last Contacted" → Auto-map to: DATE ✓
+```
+
+### Scenario 3: Elec-Eng-ONG.xlsx
+```
+Source Columns Detected:
+  - "Applicant Name" → Auto-map to: NAME ✓
+  - "Phone" → Auto-map to: PHONE ✓
+  - "Email" → Auto-map to: EMAIL ✓
+  - "Position" → Auto-map to: DESIGNATION ✓
+  - "Years of Experience" → Keep as-is
+  - "Contact Date" → Auto-map to: DATE ✓
+```
+
+---
+
+## EXAMPLE DUPLICATE SCENARIOS & MERGE DECISIONS
+
+### Example 1: Same Person, Two Contacts (Different Phone, Same Email)
+```
+Row 1: Name="John Doe", Phone="9876543210", Email="john@email.com", Contact Date="2024-11-01"
+Row 2: Name="John Doe", Phone="8765432109", Email="john@email.com", Contact Date="2024-12-08"
+
+Detection: Duplicates (same email)
+Merge Strategy:
+  - Name: Use Row 2 (latest contact)
+  - Phone: Keep "9876543210" (Row 1) OR use "8765432109" (Row 2)? User selects
+  - Email: Keep "john@email.com" (same in both)
+  - Contact Date: Use Row 2's date (most recent)
+Result: One merged record with user's chosen values
+```
+
+### Example 2: Same Person, Two Roles (Same Phone)
+```
+Row 1: Name="Sarah Smith", Phone="9123456789", Email="sarah1@email.com", Designation="Engineer"
+Row 2: Name="Sarah S.", Phone="9123456789", Email="sarah2@email.com", Designation="Senior Engineer"
+
+Detection: Duplicates (same phone)
+Merge Strategy:
+  - Name: Use "Sarah Smith" (Row 1, more complete)
+  - Phone: Keep "9123456789" (same)
+  - Email: Concatenate both OR user selects
+  - Designation: Use "Senior Engineer" (Row 2, more senior role)
+Result: One consolidated record with latest role + primary email
+```
+
+---
+
+## ACCEPTANCE CRITERIA
+
+AC-1: File Loading
+  - [x] User can load 1+ Excel files without errors
+  - [x] Headers are detected automatically
+  - [x] Data is correctly parsed (no truncation, null values handled)
+
+AC-2: Duplicate Detection
+  - [x] Records with same phone are grouped
+  - [x] Records with same email are grouped
+  - [x] Transitive grouping works (A→B, B→C means A,B,C are group)
+  - [x] Empty phone/email do not match anything
+
+AC-3: Merging
+  - [x] User can select merge strategy per field
+  - [x] Merged record is created correctly
+  - [x] Original duplicates are marked/removed
+  - [x] Merge can be undone
+
+AC-4: Export
+  - [x] Unique records exported to separate file
+  - [x] Duplicate records exported to separate file
+  - [x] Original Excel files not modified
+  - [x] Exported files are valid Excel (.xlsx)
+
+AC-5: Header Mapping
+  - [x] Auto-detection works for all three sample files (Piping, Quality, Electrical)
+  - [x] User can manually correct mapping
+  - [x] Mapping saved and reused for similar files
+  - [x] Supports 10+ variations of each field name
+
+AC-6: Performance
+  - [x] App loads 10k records without freezing
+  - [x] Duplicate detection completes in <5 seconds
+  - [x] UI responsive during operations
+
+---
+
+## GITHUB COPILOT INSTRUCTIONS
+
+When asking Copilot to generate code based on this document:
+
+**1. For Header Detection Module:**
+```
+"Create a header_detector.py module that:
+- Takes a DataFrame column list
+- Matches each column to logical field types (NAME, PHONE, EMAIL, DESIGNATION, DATE, etc.)
+- Uses fuzzy string matching (difflib or fuzzywuzzy) with >80% confidence threshold
+- Returns a dictionary mapping column_name → field_type
+- Handles variations like 'Contact No' → PHONE, 'Email ID' → EMAIL"
+```
+
+**2. For Normalization Module:**
+```
+"Create a normalizer.py with functions:
+- normalize_phone(phone_str) → removes spaces/dashes/parens, standardizes to 10-digit, handles +91 prefix
+- normalize_email(email_str) → lowercase, trim whitespace
+- Both return empty string if input is null/empty
+- Include unit tests with edge cases"
+```
+
+**3. For Duplicate Detection:**
+```
+"Create duplicate_detector.py with:
+- detect_duplicates(df, phone_col, email_col) → returns groups of duplicate indices
+- Implements transitive closure (if A matches B and B matches C, group together)
+- Returns: (unique_indices, duplicate_groups dict)
+- Handle null phones/emails gracefully"
+```
+
+**4. For Merge Service:**
+```
+"Create merge_service.py with:
+- merge_duplicate_group(records, merge_decisions) → returns one consolidated record
+- merge_decisions is dict: {field_name: 'row_N' | 'most_recent' | 'custom_value'}
+- Handles field conflicts intelligently
+- Returns consolidated_record object and updated dataframes"
+```
+
+---
+
+## TESTING STRATEGY
+
+- Unit tests for each service module (normalization, detection, merge, export)
+- Integration tests for end-to-end workflow (load → detect → merge → export)
+- Use sample_candidates.xlsx with known duplicates for testing
+- Test with all three provided Excel files (Piping, Quality, Electrical)
+- Performance tests for 10k+ records
+
+---
+
+## DEPLOYMENT
+
+- PyInstaller: Build standalone .exe for Windows
+- Add app to PATH or create desktop shortcut
+- Include config folder with default mappings
+- Include sample datasets
+- Version as 1.0.0 with changelog
+
+---
+
+## FUTURE ENHANCEMENTS (Phase 2)
+
+- Partial match detection (e.g., same last name + same phone)
+- Confidence scoring for merge suggestions
+- Batch processing (auto-schedule dedup on folder)
+- Database backend (SQLite) for large-scale operations
+- REST API for integration with HR systems
+- Web UI alternative to desktop app
+- Phone number geocoding (detect duplicate location contacts)
+- Email domain analysis (catch typos like @gmial.com)
+
+---
+
+END OF REQUIREMENTS DOCUMENT
