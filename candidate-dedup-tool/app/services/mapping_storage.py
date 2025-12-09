@@ -6,7 +6,7 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 # Configurable path so tests can override if needed
-CONFIG_PATH = Path(__file__).resolve().parents[1] / 'config' / 'header_mappings.json'
+CONFIG_PATH = Path(__file__).resolve().parents[2] / 'config' / 'header_mappings.json'
 
 
 def load_mappings() -> Dict[str, Dict[str, str]]:
