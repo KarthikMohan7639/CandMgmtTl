@@ -5,13 +5,15 @@ from typing import Dict, List, Any, Optional, Callable
 import pandas as pd
 import logging
 
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, PatternFill
-
 LOGGER = logging.getLogger(__name__)
 
 
 def _auto_fit_columns(ws, df: pd.DataFrame):
+    # local import to avoid hard dependency at module import time
+    try:
+        from openpyxl.utils import get_column_letter
+    except Exception as ex:
+        raise ImportError("openpyxl is required for Excel export (auto-fit columns)") from ex
     for i, col in enumerate(df.columns, 1):
         max_length = max(
             [len(str(col))] + [len(str(cell)) for cell in df[col].fillna('').astype(str).tolist()]
@@ -36,6 +38,11 @@ def export_unique_records(
 
     try:
         LOGGER.info('Exporting unique records to %s', output_filepath)
+        try:
+            import openpyxl  # quick check to provide clearer error if missing
+        except Exception as ex:
+            raise ImportError("openpyxl is required for exporting to Excel. Install with `pip install openpyxl`.") from ex
+
         if progress_callback:
             progress_callback(0.0, "Starting export of unique records")
 
@@ -44,12 +51,17 @@ def export_unique_records(
             workbook = writer.book
             worksheet = writer.sheets[sheet_name]
 
+            # local imports for openpyxl styles
+            from openpyxl.styles import Font, PatternFill
+
             # Format header
             header_font = Font(bold=True)
             header_fill = PatternFill(start_color='FFDCE6F1', end_color='FFDCE6F1', fill_type='solid')
-            for cell in list(worksheet.rows)[0]:
-                cell.font = header_font
-                cell.fill = header_fill
+            header_row = list(worksheet.iter_rows(min_row=1, max_row=1))
+            if header_row:
+                for cell in header_row[0]:
+                    cell.font = header_font
+                    cell.fill = header_fill
 
             # Auto-fit columns
             _auto_fit_columns(worksheet, df)
@@ -62,7 +74,7 @@ def export_unique_records(
             progress_callback(1.0, f"Exported unique records to {output_filepath}")
         else:
             print(f"Exported unique records to {output_filepath}")
-        return None
+        return True
     except Exception as ex:
         LOGGER.exception('Export failed for unique records: %s', ex)
         if progress_callback:

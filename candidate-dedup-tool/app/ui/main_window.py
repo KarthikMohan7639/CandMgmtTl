@@ -1,55 +1,87 @@
 from typing import Optional, Dict, List
 import importlib
-
-import pandas as pd
-
-from PyQt5.QtWidgets import (
-    QMainWindow, QApplication, QAction, QToolBar, QTabWidget,
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QLabel,
-    QStatusBar, QProgressBar, QMessageBox
-)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import logging
+import pandas as pd
 
 LOGGER = logging.getLogger(__name__)
 
+# Defer PyQt5 imports so module can be imported in non-GUI test environments
+PYQT_AVAILABLE = True
+try:
+    from PyQt5.QtWidgets import (
+        QMainWindow, QApplication, QAction, QToolBar, QTabWidget,
+        QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QLabel,
+        QStatusBar, QProgressBar, QMessageBox
+    )
+    from PyQt5.QtCore import Qt, QThread, pyqtSignal
+except Exception:
+    PYQT_AVAILABLE = False
+    # Provide placeholders so importing this module doesn't crash
+    QMainWindow = object
+    QApplication = object
+    QAction = object
+    QToolBar = object
+    QTabWidget = object
+    QWidget = object
+    QVBoxLayout = object
+    QTableWidget = object
+    QTableWidgetItem = object
+    QLabel = object
+    QStatusBar = object
+    QProgressBar = object
+    QMessageBox = object
+    Qt = object
+    QThread = object
+    def pyqtSignal(*args, **kwargs):
+        return None
 
-class DuplicateDetectWorker(QThread):
-    finished = pyqtSignal(object, object)
 
-    def __init__(self, df, phone_col, email_col):
-        super().__init__()
-        self.df = df
-        self.phone_col = phone_col
-        self.email_col = email_col
+if PYQT_AVAILABLE:
+    class DuplicateDetectWorker(QThread):
+        finished = pyqtSignal(object, object)
 
-    def run(self):
-        try:
-            from app.services import detect_duplicates, normalize_phone, normalize_email
-            unique_df, groups = detect_duplicates(self.df, self.phone_col, self.email_col, normalize_phone, normalize_email)
-            self.finished.emit(unique_df, groups)
-        except Exception as ex:
-            self.finished.emit(None, {'error': str(ex)})
+        def __init__(self, df, phone_col, email_col):
+            super().__init__()
+            self.df = df
+            self.phone_col = phone_col
+            self.email_col = email_col
+
+        def run(self):
+            try:
+                from app.services import detect_duplicates, normalize_phone, normalize_email
+                unique_df, groups = detect_duplicates(self.df, self.phone_col, self.email_col, normalize_phone, normalize_email)
+                self.finished.emit(unique_df, groups)
+            except Exception as ex:
+                self.finished.emit(None, {'error': str(ex)})
+else:
+    class DuplicateDetectWorker:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError('PyQt5 is required to run the GUI worker')
 
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('Candidate Deduplication Tool')
-        self.resize(1000, 700)
+if PYQT_AVAILABLE:
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle('Candidate Deduplication Tool')
+            self.resize(1000, 700)
 
-        # Application state
-        self.df_all: Optional[pd.DataFrame] = None
-        self.df_unique: Optional[pd.DataFrame] = None
-        self.duplicate_groups: Dict[str, List[int]] = {}
-        self.current_header_mapping: Dict[str, str] = {}
-        self.loaded_files: List[str] = []
+            # Application state
+            self.df_all: Optional[pd.DataFrame] = None
+            self.df_unique: Optional[pd.DataFrame] = None
+            self.duplicate_groups: Dict[str, List[int]] = {}
+            self.current_header_mapping: Dict[str, str] = {}
+            self.loaded_files: List[str] = []
 
-        self._create_actions()
-        self._create_menu()
-        self._create_toolbar()
-        self._create_tabs()
-        self._create_statusbar()
+            self._create_actions()
+            self._create_menu()
+            self._create_toolbar()
+            self._create_tabs()
+            self._create_statusbar()
+else:
+    class MainWindow:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError('PyQt5 is required to create the MainWindow')
 
     def _create_actions(self):
         self.load_action = QAction('Load Files', self)
