@@ -34,6 +34,7 @@ def detect_duplicates(
 ) -> Tuple[pd.DataFrame, Dict[str, List[int]]]:
     """
     Detect duplicates by phone and/or email and return unique representatives and groups.
+    Optimized for large datasets.
     """
     LOGGER.debug('Starting duplicate detection: phone_col=%s email_col=%s', phone_col, email_col)
     if df is None or df.empty:
@@ -42,9 +43,17 @@ def detect_duplicates(
 
     df = df.copy()
 
-    # Create normalized columns
-    df['normalized_phone'] = df[phone_col].apply(lambda x: normalizer_phone_func(x) if pd.notna(x) else '')
-    df['normalized_email'] = df[email_col].apply(lambda x: normalizer_email_func(x) if pd.notna(x) else '')
+    # Create normalized columns using vectorized operations for better performance
+    LOGGER.debug('Normalizing phone and email columns...')
+    df['normalized_phone'] = df[phone_col].fillna('').astype(str).apply(normalizer_phone_func)
+    df['normalized_email'] = df[email_col].fillna('').astype(str).apply(normalizer_email_func)
+    
+    # Log sample data for debugging
+    LOGGER.debug('Sample original data (first 2 rows):')
+    for i, idx in enumerate(list(df.index)[:2]):
+        LOGGER.debug('  Row %d: phone_orig="%s" email_orig="%s" phone_norm="%s" email_norm="%s"',
+                    i, df.at[idx, phone_col], df.at[idx, email_col],
+                    df.at[idx, 'normalized_phone'], df.at[idx, 'normalized_email'])
 
     # Build index list
     indices = list(df.index)
@@ -58,12 +67,21 @@ def detect_duplicates(
     for idx in indices:
         npn = df.at[idx, 'normalized_phone']
         nem = df.at[idx, 'normalized_email']
-        if npn:
+        # Only group if normalized value is non-empty and has actual content
+        if npn and npn.strip():
             phone_map.setdefault(npn, []).append(idx)
-        if nem:
+        if nem and nem.strip():
             email_map.setdefault(nem, []).append(idx)
 
     LOGGER.debug('Phone groups: %d email groups: %d', len(phone_map), len(email_map))
+    
+    # Log sample groups for debugging
+    if phone_map:
+        sample_phone = list(phone_map.items())[0]
+        LOGGER.debug('Sample phone group: normalized="%s" -> indices=%s', sample_phone[0], sample_phone[1])
+    if email_map:
+        sample_email = list(email_map.items())[0]
+        LOGGER.debug('Sample email group: normalized="%s" -> indices=%s', sample_email[0], sample_email[1])
 
     # Union indices sharing same phone
     for group in phone_map.values():

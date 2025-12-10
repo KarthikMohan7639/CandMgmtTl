@@ -1,6 +1,8 @@
 from typing import List, Dict, Any, Tuple
 import difflib
 import logging
+import pandas as pd
+import re
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +31,8 @@ HEADER_KEYWORDS = {
     'DATE': [
         'date', 'contact date', 'contacted date', 'contacted on',
         'application date', 'applied date', 'last contacted',
-        'last contact date', 'updated date'
+        'last contact date', 'updated date', 'dob', 'date of birth',
+        'birth date', 'cv shared', 'shared date', 'cv date'
     ]
 }
 
@@ -47,7 +50,63 @@ def _fuzzy_ratio(a: str, b: str) -> float:
         return _seq_ratio(a, b)
 
 
-def detect_headers(column_names: List[str], threshold: float = 0.75, use_fuzzy: bool = False) -> Dict[str, Dict[str, Any]]:
+def detect_by_content(df: pd.DataFrame, column: str) -> str:
+    """Detect column type by analyzing content."""
+    if df is None or df.empty or column not in df.columns:
+        return 'OTHER'
+    
+    # Sample up to 100 rows
+    sample = df[column].dropna().astype(str).head(100)
+    if sample.empty:
+        return 'OTHER'
+    
+    phone_count = 0
+    email_count = 0
+    date_count = 0
+    
+    for val in sample:
+        val_str = str(val).strip()
+        
+        # Check for email: contains @ and .com/.net/.org etc
+        if '@' in val_str and '.' in val_str.split('@')[-1]:
+            email_count += 1
+            continue  # Skip further checks if email found
+        
+        # Check for date patterns (YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, etc)
+        date_patterns = [
+            r'\d{4}[-/]\d{1,2}[-/]\d{1,2}',  # YYYY-MM-DD or YYYY/MM/DD
+            r'\d{1,2}[-/]\d{1,2}[-/]\d{4}',  # DD-MM-YYYY or DD/MM/YYYY
+            r'\d{1,2}[-/]\d{1,2}[-/]\d{2}',   # DD-MM-YY or DD/MM/YY
+        ]
+        is_date = any(re.match(pattern, val_str) for pattern in date_patterns)
+        if is_date:
+            date_count += 1
+            continue  # Skip phone check if it's a date
+        
+        # Check for phone: has 7-15 digits and mostly digits (not dates)
+        digits = re.findall(r'\d', val_str)
+        digit_count = len(digits)
+        # Phone should have 7-15 digits and digits should be >60% of content length
+        # Also ensure it's not just numbers (like IDs or years)
+        if 7 <= digit_count <= 15 and digit_count / max(len(val_str), 1) > 0.6:
+            # Additional check: avoid pure numbers without formatting
+            has_formatting = any(char in val_str for char in ['-', '(', ')', ' ', '+'])
+            if has_formatting or digit_count >= 10:  # 10+ digits likely a phone
+                phone_count += 1
+    
+    # Determine type based on majority
+    total = len(sample)
+    if email_count > total * 0.5:  # More than 50% are emails
+        return 'EMAIL'
+    elif phone_count > total * 0.5:  # More than 50% are phones
+        return 'PHONE'
+    elif date_count > total * 0.5:  # More than 50% are dates
+        return 'DATE'
+    
+    return 'OTHER'
+
+
+def detect_headers(column_names: List[str], threshold: float = 0.75, use_fuzzy: bool = False, df: pd.DataFrame = None) -> Dict[str, Dict[str, Any]]:
     """Auto-detect header types for given column names.
 
     Returns mapping: original_column -> {'field': field_type, 'score': score}
@@ -56,10 +115,21 @@ def detect_headers(column_names: List[str], threshold: float = 0.75, use_fuzzy: 
     """
     LOGGER.debug('Detecting headers for columns: %s (threshold=%s, use_fuzzy=%s)', column_names, threshold, use_fuzzy)
     results: Dict[str, Dict[str, Any]] = {}
+    
     for col in column_names:
         col_norm = col.strip().lower()
         best_field = 'OTHER'
         best_score = 0.0
+        
+        # First, try content-based detection if DataFrame is provided
+        if df is not None:
+            content_type = detect_by_content(df, col)
+            if content_type in ['PHONE', 'EMAIL']:
+                results[col] = {'field': content_type, 'score': 1.0}
+                LOGGER.debug('Column=%s detected by content=%s', col, content_type)
+                continue
+        
+        # Fallback to name-based detection
         for field_type, keywords in HEADER_KEYWORDS.items():
             # find best match among keywords for this field type
             for kw in keywords:
@@ -71,11 +141,13 @@ def detect_headers(column_names: List[str], threshold: float = 0.75, use_fuzzy: 
                 if score > best_score:
                     best_score = score
                     best_field = field_type
+        
         if best_score < threshold:
             results[col] = {'field': 'OTHER', 'score': best_score}
         else:
             results[col] = {'field': best_field, 'score': best_score}
         LOGGER.debug('Column=%s detected=%s (score=%.3f)', col, results[col]['field'], results[col]['score'])
+    
     LOGGER.info('Header detection complete for %d columns', len(column_names))
     return results
 

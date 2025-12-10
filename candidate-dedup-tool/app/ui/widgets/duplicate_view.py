@@ -168,5 +168,11 @@ class DuplicateView(QWidget):
         """Return a hint string summarizing the matching key(s)."""
         summary = self._group_summary(list(range(len(rows))))
         return summary
-class DuplicateView:
-    pass
+
+    def clear(self):
+        """Clear all data and reset the view."""
+        self._groups = {}
+        self._df = None
+        self.group_list.clear()
+        self.summary_label.setText('Select a group to view records')
+        self.data_table.clear()
