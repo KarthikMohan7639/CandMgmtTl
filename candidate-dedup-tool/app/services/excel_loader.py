@@ -10,22 +10,27 @@ LOGGER = logging.getLogger(__name__)
 def load_excel_file(filepath: str, sheet_name: int = 0) -> pd.DataFrame:
     """
     Load a single Excel file and return as DataFrame.
+    Optimized for performance with large files.
     """
     LOGGER.debug('Loading Excel file: %s', filepath)
     if not os.path.exists(filepath):
         LOGGER.error('File not found: %s', filepath)
         raise FileNotFoundError(f"File not found: {filepath}")
     try:
-        # prefer openpyxl for .xlsx
-        df = pd.read_excel(filepath, sheet_name=sheet_name, engine='openpyxl')
-    except ValueError:
-        # invalid file/format
-        LOGGER.exception('ValueError when reading Excel file: %s', filepath)
-        raise
-    except Exception:
-        LOGGER.warning('openpyxl read failed for %s, trying default engine', filepath)
-        # try with pandas default engine fallback
-        df = pd.read_excel(filepath, sheet_name=sheet_name)
+        # Use openpyxl with optimization for large files
+        df = pd.read_excel(
+            filepath, 
+            sheet_name=sheet_name, 
+            engine='openpyxl',
+            dtype_backend='pyarrow'  # Use pyarrow for better performance if available
+        )
+    except (ValueError, ImportError):
+        try:
+            # Fallback without pyarrow
+            df = pd.read_excel(filepath, sheet_name=sheet_name, engine='openpyxl')
+        except Exception:
+            LOGGER.warning('openpyxl read failed for %s, trying default engine', filepath)
+            df = pd.read_excel(filepath, sheet_name=sheet_name)
 
     if df is None or df.empty:
         LOGGER.warning('Loaded file is empty: %s', filepath)
